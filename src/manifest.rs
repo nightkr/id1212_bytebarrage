@@ -1,18 +1,62 @@
 use super::piece::PieceRef;
 
+use std::error;
+use std::fmt::{self, Display, Formatter};
 use std::path::Path;
 use std::fs::File;
-use std::io::{Read, Result};
+use std::io::{self, Read};
+
+use rmp_serde;
 
 const PIECE_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug)]
-pub struct Manifest {
-    pub name: Option<String>,
-    pieces: Vec<ManifestPieceRef>,
+pub enum Error {
+    EncodeFailed(rmp_serde::encode::Error),
+    DecodeFailed(rmp_serde::decode::Error),
 }
 
-#[derive(Debug)]
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        match *self {
+            Error::EncodeFailed(_) => "encode failed",
+            Error::DecodeFailed(_) => "decode failed",
+        }
+    }
+
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            Error::EncodeFailed(ref err) => Some(err),
+            Error::DecodeFailed(ref err) => Some(err),
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> Result<(), fmt::Error> {
+        error::Error::description(self).fmt(formatter)
+    }
+}
+
+impl From<rmp_serde::encode::Error> for Error {
+    fn from(err: rmp_serde::encode::Error) -> Error {
+        Error::EncodeFailed(err)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for Error {
+    fn from(err: rmp_serde::decode::Error) -> Error {
+        Error::DecodeFailed(err)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Manifest {
+    pub name: Option<String>,
+    pub pieces: Vec<ManifestPieceRef>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ManifestPieceRef {
     pub from: u64,
     pub len: u64,
@@ -20,7 +64,7 @@ pub struct ManifestPieceRef {
 }
 
 impl Manifest {
-    pub fn for_file(path: &Path) -> Result<Manifest> {
+    pub fn for_file(path: &Path) -> io::Result<Manifest> {
         let mut file = File::open(path)?;
         let mut pieces = Vec::new();
         let mut pos = 0;
@@ -28,7 +72,7 @@ impl Manifest {
             let mut buf = [0; PIECE_BYTES];
             let len = file.read(&mut buf)?;
             if len > 0 {
-                let piece = PieceRef::for_buffer(&buf);
+                let piece = PieceRef::for_buffer(&buf[..len]);
                 pieces.push(ManifestPieceRef {
                     from: pos,
                     len: len as u64,
@@ -48,7 +92,21 @@ impl Manifest {
         })
     }
 
-    pub fn pieces(&self) -> &[ManifestPieceRef] {
-        &self.pieces
+    pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
+        Ok(rmp_serde::to_vec(self)?)
+    }
+
+    pub fn from_read(read: &mut Read) -> Result<Manifest, Error> {
+        Ok(rmp_serde::from_read(read)?)
+    }
+}
+
+impl ManifestPieceRef {
+    pub fn verify(&self, buf: &[u8]) -> bool {
+        self.piece.verify(buf)
+    }
+
+    pub fn ref_vec(&self) -> Vec<u8> {
+        self.piece.to_vec()
     }
 }

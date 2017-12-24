@@ -2,10 +2,15 @@
 name = "datablizzard"
 version = "0.1.0"
 authors = ["Teo Klestrup Röijezon <teo@nullable.se>"]
-cargo-features = ["always-optimize-deps"]
-always-optimize-deps = true
+# cargo-features = ["always-optimize-deps"]
+# always-optimize-deps = true
 
 [dependencies]
-sha3 = "0.7.2"
+blake2 = "0.7.0"
 digest = "0.7.2"
+typenum = "1.9"
 generic-array = "0.9.0"
+serde = "1.0"
+serde_derive = "1.0"
+serde_bytes = "0.10.3"
+rmp-serde = "0.13.7"

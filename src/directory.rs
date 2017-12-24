@@ -1,23 +1,22 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::fs::File;
 use std::io::{Error, Result};
 
-use super::manifest::Manifest;
-use super::piece::PieceRef;
-use super::fs_walker::walk_dir_files;
+use manifest::Manifest;
+use piece::PieceRef;
+use fs_walker::walk_dir_files;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Directory {
     pieces: HashMap<PieceRef, DirectoryPieceRef>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DirectoryPieceRef {
-    from: u64,
-    len: u64,
-    reference: PieceRef,
-    file: PathBuf,
+    pub from: u64,
+    pub len: u64,
+    pub reference: PieceRef,
+    pub file: PathBuf,
 }
 
 impl Directory {
@@ -28,7 +27,7 @@ impl Directory {
     }
 
     pub fn add_manifest(&mut self, path: &Path, manifest: &Manifest) {
-        for piece in manifest.pieces().iter() {
+        for piece in manifest.pieces.iter() {
             self.pieces.insert(
                 piece.piece,
                 DirectoryPieceRef {
@@ -39,6 +38,10 @@ impl Directory {
                 },
             );
         }
+    }
+
+    pub fn find_piece(&self, piece_ref: &PieceRef) -> Option<DirectoryPieceRef> {
+        self.pieces.get(piece_ref).cloned()
     }
 
     pub fn scan_folder(&mut self, path: &Path) -> Result<()> {
