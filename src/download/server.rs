@@ -1,35 +1,50 @@
+use tokio_service::Service;
+use tokio_proto::TcpServer;
+use bytes::Bytes;
+use futures::{future, Future};
+
 use directory::Directory;
 use piece::PieceRef;
+use download::proto::DownloadProto;
 
-use std::net::{TcpListener, TcpStream, ToSocketAddrs};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::net::ToSocketAddrs;
+use std::io::{self, Read, Seek, SeekFrom};
 use std::fs::File;
-use std::thread;
 
-fn handle_request(directory: &Directory, mut stream: TcpStream) -> io::Result<()> {
-    let piece_ref = PieceRef::from_read(&mut stream)?;
+struct DownloadServer {
+    directory: Directory,
+}
+
+impl Service for DownloadServer {
+    type Request = PieceRef;
+    type Response = Bytes;
+    type Error = io::Error;
+    type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
+
+    fn call(&self, piece_ref: Self::Request) -> Self::Future {
+        Box::new(future::result(read_piece(&self.directory, &piece_ref)))
+    }
+}
+
+fn read_piece(directory: &Directory, piece_ref: &PieceRef) -> io::Result<Bytes> {
     let dir_piece_ref = directory.find_piece(&piece_ref).ok_or(io::Error::new(
         io::ErrorKind::NotFound,
-        format!("unknown piece {:?}", piece_ref),
+        format!(
+            "unknown piece {:?}",
+            piece_ref
+        ),
     ))?;
     let mut file = File::open(dir_piece_ref.file)?;
     file.seek(SeekFrom::Start(dir_piece_ref.from))?;
-    let mut buf = Vec::with_capacity(dir_piece_ref.len as usize);
+    let mut buf = Vec::new();
     buf.resize(dir_piece_ref.len as usize, 0);
     file.read_exact(&mut buf)?;
-    stream.write_all(&mut buf)?;
-    stream.flush()?;
-    Ok(())
+    Ok(Bytes::from(buf))
 }
 
 pub fn listen<Addr: ToSocketAddrs>(addr: Addr, directory: &Directory) -> io::Result<()> {
-    let listener = TcpListener::bind(addr)?;
-    loop {
-        let (stream, addr) = listener.accept()?;
-        println!("New connection from {}", addr);
-        let dir = directory.clone();
-        thread::spawn(move || {
-            handle_request(&dir, stream).unwrap();
-        });
-    }
+    let server = TcpServer::new(DownloadProto, addr.to_socket_addrs()?.next().unwrap());
+    let dir = directory.clone();
+    server.serve(move || Ok(DownloadServer { directory: dir.clone() }));
+    Ok(())
 }

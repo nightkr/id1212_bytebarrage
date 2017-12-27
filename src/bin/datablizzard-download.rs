@@ -3,7 +3,6 @@ extern crate datablizzard;
 use std::env::args;
 use std::path::Path;
 use std::fs::File;
-use std::io::Read;
 
 use datablizzard::manifest::Manifest;
 use datablizzard::download;

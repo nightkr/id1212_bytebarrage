@@ -4,7 +4,9 @@ use generic_array::GenericArray;
 use serde::{de, Deserializer};
 use serde_bytes;
 use typenum::Unsigned;
+use bytes::BytesMut;
 
+use std::iter::FromIterator;
 use std::fmt::{self, Debug, Formatter};
 use std::io::{self, Read};
 
@@ -55,5 +57,16 @@ impl PieceRef {
         Ok(PieceRef {
             blake2b_64: hash_buf,
         })
+    }
+
+    pub fn from_bytes_mut(bytes: &mut BytesMut) -> Option<PieceRef> {
+        if bytes.len() >= Length::to_usize() {
+            let hash = bytes.split_to(Length::to_usize());
+            Some(PieceRef {
+                blake2b_64: GenericArray::from_iter(hash),
+            })
+        } else {
+            None
+        }
     }
 }
