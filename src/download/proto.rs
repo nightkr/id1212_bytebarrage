@@ -4,6 +4,7 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_proto::pipeline::{ServerProto, ClientProto};
 
 use piece::PieceRef;
+use manifest::ManifestPieceRef;
 
 use std::io;
 
@@ -28,31 +29,36 @@ impl Encoder for ServerCodec {
     }
 }
 
-pub struct ClientCodec;
+pub struct ClientCodec {
+    curr_request: Option<ManifestPieceRef>,
+}
 
 impl Decoder for ClientCodec {
     type Item = Bytes;
     type Error = io::Error;
 
-    fn decode(&mut self, _buf: &mut BytesMut) -> io::Result<Option<Bytes>> {
-        Ok(None)
-    }
-
-    fn decode_eof(&mut self, buf: &mut BytesMut) -> io::Result<Option<Bytes>> {
-        if buf.is_empty() {
-            Ok(None)
+    fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<Bytes>> {
+        if let Some(piece) = self.curr_request {
+            let len = piece.len as usize;
+            if buf.len() >= len {
+                self.curr_request = None;
+                Ok(Some(buf.split_to(len).freeze()))
+            } else {
+                Ok(None)
+            }
         } else {
-            Ok(Some(buf.take().freeze()))
+            Ok(None)
         }
     }
 }
 
 impl Encoder for ClientCodec {
-    type Item = PieceRef;
+    type Item = ManifestPieceRef;
     type Error = io::Error;
 
-    fn encode(&mut self, msg: PieceRef, buf: &mut BytesMut) -> io::Result<()> {
-        buf.extend(msg.to_vec());
+    fn encode(&mut self, msg: ManifestPieceRef, buf: &mut BytesMut) -> io::Result<()> {
+        self.curr_request = Some(msg);
+        buf.extend(msg.piece.to_vec());
         Ok(())
     }
 }
@@ -70,11 +76,13 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for DownloadProto {
 }
 
 impl<T: AsyncRead + AsyncWrite + 'static> ClientProto<T> for DownloadProto {
-    type Request = PieceRef;
+    type Request = ManifestPieceRef;
     type Response = Bytes;
     type Transport = Framed<T, ClientCodec>;
     type BindTransport = Result<Self::Transport, io::Error>;
     fn bind_transport(&self, io: T) -> Self::BindTransport {
-        Ok(io.framed(ClientCodec))
+        Ok(io.framed(ClientCodec {
+            curr_request: None,
+        }))
     }
 }

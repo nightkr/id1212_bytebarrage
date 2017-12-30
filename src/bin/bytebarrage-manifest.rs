@@ -1,11 +1,11 @@
-extern crate datablizzard;
+extern crate bytebarrage;
 
 use std::env::args;
 use std::path::Path;
 use std::fs::File;
 use std::io::Write;
 
-use datablizzard::manifest::Manifest;
+use bytebarrage::manifest::Manifest;
 
 fn main() {
     for path_str in args().skip(1) {

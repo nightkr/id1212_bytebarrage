@@ -50,13 +50,13 @@ impl From<rmp_serde::decode::Error> for Error {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Manifest {
     pub name: Option<String>,
     pub pieces: Vec<ManifestPieceRef>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct ManifestPieceRef {
     pub from: u64,
     pub len: u64,

@@ -1,11 +1,11 @@
-extern crate datablizzard;
+extern crate bytebarrage;
 
 use std::env::args;
 use std::path::Path;
 use std::fs::File;
 
-use datablizzard::manifest::Manifest;
-use datablizzard::download;
+use bytebarrage::manifest::Manifest;
+use bytebarrage::download;
 
 fn main() {
     let mut args = args().skip(1);

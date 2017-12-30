@@ -1,10 +1,10 @@
-extern crate datablizzard;
+extern crate bytebarrage;
 
 use std::env::args;
 use std::path::Path;
 
-use datablizzard::directory::Directory;
-use datablizzard::download;
+use bytebarrage::directory::Directory;
+use bytebarrage::download;
 
 fn main() {
     let mut directory = Directory::new();
