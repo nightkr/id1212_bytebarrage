@@ -18,5 +18,5 @@ fn main() {
     println!("{:#?}", manifest);
 
     let out_path = Path::new(&out_path_str);
-    download::client::download("127.0.0.1:36936", &manifest, &out_path).unwrap();
+    download::client::download(&manifest, &out_path).unwrap();
 }

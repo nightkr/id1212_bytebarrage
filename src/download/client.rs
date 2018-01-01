@@ -1,45 +1,105 @@
 use tokio_core::reactor::{Core, Handle};
 use tokio_proto::TcpClient;
 use tokio_service::Service;
-use futures::future::{self, Future, Loop};
+use tokio_timer::Timer;
+use futures::future::{self, Future};
 
 use manifest::{Manifest, ManifestPieceRef};
-use download::proto::DownloadProto;
+use super::proto::{ClientMsg, DownloadProto, ServerMsg};
+use discovery::client::{listen as discovery_listen, DiscoveredPieces};
 
 use std::collections::VecDeque;
 use std::path::Path;
 use std::fs::File;
-use std::net::{TcpStream, ToSocketAddrs, SocketAddr};
-use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::io::{self, Seek, SeekFrom, Write};
+use std::time::Duration;
 
-fn download_pieces<'q>(addr: Box<SocketAddr>, handle: Box<Handle>, mut queue: VecDeque<ManifestPieceRef>, mut file: File) -> Box<Future<Item = Loop<(), (File, VecDeque<ManifestPieceRef>)>, Error = io::Error>> {
+fn download_pieces<'f>(
+    handle: &Handle,
+    discovery_mgr: &'f DiscoveredPieces,
+    timer: &'f Timer,
+    queue: &'f mut VecDeque<ManifestPieceRef>,
+    file: &'f mut File,
+) -> Box<'f + Future<Item = (), Error = io::Error>> {
     if let Some(piece) = queue.pop_front() {
         println!("Downloading piece {:?}", piece);
-        // let piece_ref = piece.piece;
-        Box::new(TcpClient::new(DownloadProto).connect(&addr, &handle)
-                 .and_then(move |client| {
-                     client.call(piece)
-                 })
-                 .and_then(move |buf| {
-                     file.seek(SeekFrom::Start(piece.from))?;
-                     file.write_all(&buf)?;
-                     Ok(Loop::Continue((file, queue)))
-                 }))
+        let piece_peers = discovery_mgr
+            .get_piece_peers(&piece.piece)
+            .into_iter()
+            .map(|addr| {
+                let discovery_mgr = discovery_mgr.clone();
+                TcpClient::new(DownloadProto)
+                    .connect(&addr, &handle)
+                    .and_then(move |client| {
+                        client
+                            .call(ServerMsg::Query(piece.piece))
+                            .and_then(move |msg| match msg {
+                                ClientMsg::QueryResult(true) => Ok(client),
+                                _ => {
+                                    discovery_mgr.remove_piece_peer(&piece.piece, &addr);
+                                    Err(io::Error::new(io::ErrorKind::NotFound, "piece not found"))
+                                }
+                            })
+                    })
+            })
+            .collect::<Vec<_>>();
+
+        let download: Box<'f + Future<Item = _, Error = _>> = if !piece_peers.is_empty() {
+            Box::new(
+                future::select_ok(piece_peers)
+                    .and_then(move |(client, _)| client.call(ServerMsg::Get(piece.piece)))
+                    .and_then(move |msg| match msg {
+                        ClientMsg::Contents(buf) => {
+                            file.seek(SeekFrom::Start(piece.from))?;
+                            file.write_all(&buf)?;
+                            Ok(())
+                        }
+                        _ => Err(io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            format!("{:?}", msg),
+                        )),
+                    }),
+            )
+        } else {
+            Box::new(
+                timer
+                    .sleep(Duration::from_millis(500))
+                    .then(|_| Err(io::Error::new(io::ErrorKind::NotFound, "no peer has piece"))),
+            )
+        };
+
+        Box::new(download.then(move |result| match result {
+            Ok(()) => Box::new(future::ok(())),
+            Err(err) => {
+                println!("Failed to download {:?}, deferring: {}", piece.piece, err);
+                queue.push_back(piece);
+                discovery_mgr.enqueue_piece(piece.piece);
+                Box::new(future::ok(()))
+            }
+        }))
     } else {
-        Box::new(future::ok(Loop::Break(())))
+        Box::new(future::ok(()))
     }
 }
 
-pub fn download<Addr: ToSocketAddrs>(
-    addr: Addr,
-    manifest: &Manifest,
-    path: &Path,
-) -> io::Result<()> {
-    let address = addr.to_socket_addrs()?.next().unwrap();
+pub fn download(manifest: &Manifest, path: &Path) -> io::Result<()> {
     let mut core = Core::new()?;
-    let file = File::create(path)?;
-    let queue = VecDeque::from(manifest.pieces.clone());
+    let timer = Timer::default();
+    let mut file = File::create(path)?;
+    let mut queue = VecDeque::from(manifest.pieces.clone());
     let handle = core.handle();
-    core.run(future::loop_fn((file, queue), move |(file, queue)| download_pieces(Box::new(address), Box::new(handle.clone()), queue, file)))?;
+    let discovery_mgr = discovery_listen(&handle)?;
+    for piece in queue.iter() {
+        discovery_mgr.enqueue_piece(piece.piece);
+    }
+    while !queue.is_empty() {
+        core.run(download_pieces(
+            &handle,
+            &discovery_mgr,
+            &timer,
+            &mut queue,
+            &mut file,
+        ))?;
+    }
     Ok(())
 }

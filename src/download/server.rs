@@ -5,7 +5,8 @@ use futures::{future, Future};
 
 use directory::Directory;
 use piece::PieceRef;
-use download::proto::DownloadProto;
+use super::proto::{ClientMsg, DownloadProto, ServerMsg};
+use discovery;
 
 use std::net::ToSocketAddrs;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -16,23 +17,27 @@ struct DownloadServer {
 }
 
 impl Service for DownloadServer {
-    type Request = PieceRef;
-    type Response = Bytes;
+    type Request = ServerMsg;
+    type Response = ClientMsg;
     type Error = io::Error;
     type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
 
-    fn call(&self, piece_ref: Self::Request) -> Self::Future {
-        Box::new(future::result(read_piece(&self.directory, &piece_ref)))
+    fn call(&self, req: Self::Request) -> Self::Future {
+        match req {
+            ServerMsg::Get(piece_ref) => Box::new(future::result(
+                read_piece(&self.directory, &piece_ref).map(ClientMsg::Contents),
+            )),
+            ServerMsg::Query(piece_ref) => Box::new(future::ok(ClientMsg::QueryResult(
+                self.directory.find_piece(&piece_ref).is_some(),
+            ))),
+        }
     }
 }
 
 fn read_piece(directory: &Directory, piece_ref: &PieceRef) -> io::Result<Bytes> {
     let dir_piece_ref = directory.find_piece(&piece_ref).ok_or(io::Error::new(
         io::ErrorKind::NotFound,
-        format!(
-            "unknown piece {:?}",
-            piece_ref
-        ),
+        format!("unknown piece {:?}", piece_ref),
     ))?;
     let mut file = File::open(dir_piece_ref.file)?;
     file.seek(SeekFrom::Start(dir_piece_ref.from))?;
@@ -42,9 +47,18 @@ fn read_piece(directory: &Directory, piece_ref: &PieceRef) -> io::Result<Bytes> 
     Ok(Bytes::from(buf))
 }
 
-pub fn listen<Addr: ToSocketAddrs>(addr: Addr, directory: &Directory) -> io::Result<()> {
-    let server = TcpServer::new(DownloadProto, addr.to_socket_addrs()?.next().unwrap());
+pub fn listen<Addr: ToSocketAddrs>(addrs: Addr, directory: &Directory) -> io::Result<()> {
+    let addr = addrs.to_socket_addrs()?.next().unwrap();
+    let server = TcpServer::new(DownloadProto, addr);
     let dir = directory.clone();
-    server.serve(move || Ok(DownloadServer { directory: dir.clone() }));
+    server.with_handle(move |handle| {
+        let dir = dir.clone();
+        discovery::server::listen(handle, addr.port(), dir.clone()).unwrap();
+        move || {
+            Ok(DownloadServer {
+                directory: dir.clone(),
+            })
+        }
+    });
     Ok(())
 }
