@@ -34,7 +34,7 @@ fn download_pieces<'f>(
                         client
                             .call(ServerMsg::Query(piece.piece))
                             .and_then(move |msg| match msg {
-                                ClientMsg::QueryResult(true) => Ok(client),
+                                ClientMsg::QueryResult(true) => Ok((client, addr)),
                                 _ => {
                                     discovery_mgr.remove_piece_peer(&piece.piece, &addr);
                                     Err(io::Error::new(io::ErrorKind::NotFound, "piece not found"))
@@ -47,12 +47,18 @@ fn download_pieces<'f>(
         let download: Box<'f + Future<Item = _, Error = _>> = if !piece_peers.is_empty() {
             Box::new(
                 future::select_ok(piece_peers)
-                    .and_then(move |(client, _)| client.call(ServerMsg::Get(piece.piece)))
-                    .and_then(move |msg| match msg {
+                    .and_then(move |((client, addr), _)| client.call(ServerMsg::Get(piece.piece)).map(move |msg| (msg, addr)))
+                    .and_then(move |(msg, addr)| match msg {
                         ClientMsg::Contents(buf) => {
-                            file.seek(SeekFrom::Start(piece.from))?;
-                            file.write_all(&buf)?;
-                            Ok(())
+                            if piece.verify(&buf) {
+                                file.seek(SeekFrom::Start(piece.from))?;
+                                file.write_all(&buf)?;
+                                Ok(())
+                            } else {
+                                println!("Received damaged piece {:?} from {}, blacklisting...", piece.piece, addr);
+                                discovery_mgr.remove_piece_peer(&piece.piece, &addr);
+                                Err(io::Error::new(io::ErrorKind::InvalidData, "piece validation failed"))
+                            }
                         }
                         _ => Err(io::Error::new(
                             io::ErrorKind::InvalidInput,

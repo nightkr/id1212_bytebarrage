@@ -121,10 +121,7 @@ pub fn listen(handle: &Handle) -> io::Result<DiscoveredPieces> {
     let (sock_sink, sock_stream) = bind(handle)?.split();
     let broadcast_mgr = manager.clone();
     handle.spawn(
-        // timer
-        //     .interval(Duration::from_millis(50))
-        //     .map_err::<io::Error, _>(From::from)
-        Interval::new(Duration::from_millis(50), handle)?
+        Interval::new(Duration::from_millis(5), handle)?
             .filter_map(move |()| query_pieces(broadcast_mgr.clone()))
             .forward(sock_sink)
             .then(|x| {

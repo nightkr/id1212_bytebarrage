@@ -42,8 +42,13 @@ fn read_piece(directory: &Directory, piece_ref: &PieceRef) -> io::Result<Bytes> 
     let mut file = File::open(dir_piece_ref.file)?;
     file.seek(SeekFrom::Start(dir_piece_ref.from))?;
     let mut buf = Vec::new();
-    buf.resize(dir_piece_ref.len as usize, 0);
-    file.read_exact(&mut buf)?;
+    if file.metadata()?.len() >= dir_piece_ref.from + dir_piece_ref.len {
+        buf.resize(dir_piece_ref.len as usize, 0);
+        file.read_exact(&mut buf)?;
+    } else {
+        // Oh dear, the file has shrunk...
+        // If we send an empty buffer then the client should reject it and retry
+    }
     Ok(Bytes::from(buf))
 }
 
