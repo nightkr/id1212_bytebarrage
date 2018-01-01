@@ -10,8 +10,8 @@ use discovery::client::{listen as discovery_listen, DiscoveredPieces};
 
 use std::collections::VecDeque;
 use std::path::Path;
-use std::fs::File;
-use std::io::{self, Seek, SeekFrom, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::time::Duration;
 
 fn download_pieces<'f>(
@@ -47,7 +47,11 @@ fn download_pieces<'f>(
         let download: Box<'f + Future<Item = _, Error = _>> = if !piece_peers.is_empty() {
             Box::new(
                 future::select_ok(piece_peers)
-                    .and_then(move |((client, addr), _)| client.call(ServerMsg::Get(piece.piece)).map(move |msg| (msg, addr)))
+                    .and_then(move |((client, addr), _)| {
+                        client
+                            .call(ServerMsg::Get(piece.piece))
+                            .map(move |msg| (msg, addr))
+                    })
                     .and_then(move |(msg, addr)| match msg {
                         ClientMsg::Contents(buf) => {
                             if piece.verify(&buf) {
@@ -55,9 +59,15 @@ fn download_pieces<'f>(
                                 file.write_all(&buf)?;
                                 Ok(())
                             } else {
-                                println!("Received damaged piece {:?} from {}, blacklisting...", piece.piece, addr);
+                                println!(
+                                    "Received damaged piece {:?} from {}, blacklisting...",
+                                    piece.piece, addr
+                                );
                                 discovery_mgr.remove_piece_peer(&piece.piece, &addr);
-                                Err(io::Error::new(io::ErrorKind::InvalidData, "piece validation failed"))
+                                Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "piece validation failed",
+                                ))
                             }
                         }
                         _ => Err(io::Error::new(
@@ -88,11 +98,38 @@ fn download_pieces<'f>(
     }
 }
 
+fn skip_valid_pieces<'a, I: IntoIterator<Item = &'a ManifestPieceRef>>(
+    pieces: I,
+    file: &mut File,
+) -> io::Result<Vec<ManifestPieceRef>> {
+    let iter = pieces.into_iter();
+    let mut out = Vec::with_capacity(iter.size_hint().0);
+    let mut buf = Vec::new();
+    for piece in iter {
+        file.seek(SeekFrom::Start(piece.from))?;
+        buf.resize(piece.len as usize, 0);
+        file.read_exact(&mut buf)?;
+        if piece.piece.verify(&buf) {
+            println!("Piece {:?} is already valid, skipping", piece);
+        } else {
+            out.push(piece.clone());
+        }
+    }
+    out.shrink_to_fit();
+    Ok(out)
+}
+
 pub fn download(manifest: &Manifest, path: &Path) -> io::Result<()> {
     let mut core = Core::new()?;
     let timer = Timer::default();
-    let mut file = File::create(path)?;
-    let mut queue = VecDeque::from(manifest.pieces.clone());
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(path)?;
+    file.set_len(manifest.len())?;
+    let pieces = skip_valid_pieces(&manifest.pieces, &mut file)?;
+    let mut queue = VecDeque::from(pieces);
     let handle = core.handle();
     let discovery_mgr = discovery_listen(&handle)?;
     for piece in queue.iter() {

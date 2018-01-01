@@ -92,6 +92,14 @@ impl Manifest {
         })
     }
 
+    pub fn len(&self) -> u64 {
+        self.pieces
+            .iter()
+            .map(|piece| piece.from + piece.len)
+            .max()
+            .unwrap_or(0)
+    }
+
     pub fn to_vec(&self) -> Result<Vec<u8>, Error> {
         Ok(rmp_serde::to_vec(self)?)
     }
