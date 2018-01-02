@@ -1,0 +1,56 @@
+* Compiling
+
+Download and install the Rust compiler from [[https://www.rust-lang.org/en-US/install.html]]
+(tested against the 1.22, the current stable as of writing this). Then you should be able
+to compile it by running ~$ cargo build --release~.
+
+** Why is compiling so slow?
+
+All files are hashed using BLAKE2, both for identification and to prevent tampering. However,
+this is /very/ slow if you do not build with optimizations enabled. Building it in debug mode
+(without the ~--release~ flag) is much faster, but expect to spend seconds rather than
+milliseconds hashing each file.
+
+* Running
+
+** A note on firewalls
+
+ByteBarrage uses UDP broadcast and TCP unicast on port 36936, make sure to whitelist this
+on all clients and servers if you're using a port-based firewall (such as UFW).
+
+You must be connected to an IPv4 network, discovery is currently not functional using IPv6
+(since I don't have such a network to test against).
+
+** Seeding
+
+To start seeding, run ~$ target/release/bytebarrage-server /path/to/file~. Multiple paths
+are allowed, and specifying a directory will seed all files inside that directory (recursively).
+
+** Downloading
+
+To download a file you must first generate a Blizzard manifest by running
+~$ target/release/bytebarrage-manifest /path/to/file~. Multiple paths are allowed, but they
+must each point towards a single file, not a directory. This will create a file named
+~/path/to/file.blizzard~, which you must somehow transfer to the recipient. The recipient can
+then run ~$ target/release/bytebarrage-download /path/to/file.blizzard /path/to/file~ to download
+the file described by ~/path/to/file.blizzard~ to ~/path/to/file~.
+
+*** Seeder Choice
+
+All seeders that advertise a given piece are queried in parallell, and the first that
+responds is picked. If the seeder responds with an invalid piece then it is blacklisted for that piece,
+and the piece is returned to the queue.
+
+**** Why requery seeders that have already advertised the piece?
+
+Seeders advertise all of their addresses, but not all of them may be reachable by the client. For example,
+the seeder might also be on a different VPN tunnel, or a Host<->VM network. From the client's perspective
+this address might be unreachable, firewalled, or even point towards another seeder entirely. The seeder
+might also simply have shut down in the meantime. Hence we want to quickly exclude all nodes that do not
+have what we're asking for, while avoiding multiple correct downloads of the same piece.
+
+*** Resuming Downloads
+
+All pieces are verified before the download starts, and pieces that already contain the correct data
+are skipped. Hence, resuming is fully automatic. However, only fully downloaded and verified pieces will
+be taken into account,
