@@ -1,3 +1,15 @@
+* Security Model
+
+A malicious peer should not be able to inject malicious data into transferred files. This
+is prevented by verifying all pieces against their hash before saving. Blake2b was chosen
+because it is very fast (similar performance to SHA-1), while it doesn't have any known
+vulnerabilities.
+
+[[https://blake2.net/skylake.png]]
+
+However, ByteBarrage in its current state is vulnerable to DoS attacks: there is no mechanism
+for timing out slow downloads, for example.
+
 * Compiling
 
 Download and install the Rust compiler from [[https://www.rust-lang.org/en-US/install.html]]
