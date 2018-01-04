@@ -38,9 +38,7 @@ impl Debug for PieceRef {
 
 impl PieceRef {
     pub fn for_buffer(buf: &[u8]) -> PieceRef {
-        PieceRef {
-            blake2b_64: Blake2b::digest(buf),
-        }
+        PieceRef { blake2b_64: Blake2b::digest(buf) }
     }
 
     pub fn verify(&self, buf: &[u8]) -> bool {
@@ -54,17 +52,13 @@ impl PieceRef {
     pub fn from_read<R: Read>(read: &mut R) -> io::Result<PieceRef> {
         let mut hash_buf = GenericArray::default();
         read.read_exact(hash_buf.as_mut_slice())?;
-        Ok(PieceRef {
-            blake2b_64: hash_buf,
-        })
+        Ok(PieceRef { blake2b_64: hash_buf })
     }
 
     pub fn from_bytes_mut(bytes: &mut BytesMut) -> Option<PieceRef> {
         if bytes.len() >= Length::to_usize() {
             let hash = bytes.split_to(Length::to_usize());
-            Some(PieceRef {
-                blake2b_64: GenericArray::from_iter(hash),
-            })
+            Some(PieceRef { blake2b_64: GenericArray::from_iter(hash) })
         } else {
             None
         }

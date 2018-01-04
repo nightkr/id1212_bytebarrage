@@ -26,8 +26,9 @@ impl PieceInfo {
 
     fn add_peer(&mut self, addrs: &[SocketAddr]) {
         let blacklist = self.blacklist.clone();
-        self.peers
-            .extend(addrs.iter().filter(|addr| !blacklist.contains(addr)));
+        self.peers.extend(addrs.iter().filter(
+            |addr| !blacklist.contains(addr),
+        ));
     }
 
     fn blacklist_peer(&mut self, addr: &SocketAddr) {
@@ -70,9 +71,7 @@ pub struct DiscoveredPieces {
 
 impl DiscoveredPieces {
     fn new() -> DiscoveredPieces {
-        DiscoveredPieces {
-            inner: Arc::new(Mutex::new(DiscoveredPiecesInner::new())),
-        }
+        DiscoveredPieces { inner: Arc::new(Mutex::new(DiscoveredPiecesInner::new())) }
     }
 
     fn add_piece_peer(&self, piece: &PieceRef, addrs: &[SocketAddr]) {

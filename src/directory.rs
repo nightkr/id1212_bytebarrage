@@ -21,9 +21,7 @@ pub struct DirectoryPieceRef {
 
 impl Directory {
     pub fn new() -> Directory {
-        Directory {
-            pieces: HashMap::default(),
-        }
+        Directory { pieces: HashMap::default() }
     }
 
     pub fn add_manifest(&mut self, path: &Path, manifest: &Manifest) {

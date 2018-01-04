@@ -19,14 +19,16 @@ fn local_addrs(port: u16) -> Vec<SocketAddr> {
 
 fn handle_packet(directory: &Directory, addrs: &[SocketAddr], msg: Msg) -> Option<Msg> {
     match msg {
-        Msg::Find(piece) => if directory.find_piece(&piece).is_some() {
-            Some(Msg::ServerHas(ServerPieceRef {
-                addrs: addrs.to_vec(),
-                piece: piece,
-            }))
-        } else {
-            None
-        },
+        Msg::Find(piece) => {
+            if directory.find_piece(&piece).is_some() {
+                Some(Msg::ServerHas(ServerPieceRef {
+                    addrs: addrs.to_vec(),
+                    piece: piece,
+                }))
+            } else {
+                None
+            }
+        }
         _ => None,
     }
 }

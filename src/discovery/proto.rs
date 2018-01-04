@@ -60,6 +60,7 @@ fn bind_allow_port_reuse(builder: &UdpBuilder) -> io::Result<&UdpBuilder> {
 
 #[cfg(windows)]
 fn bind_allow_port_reuse(builder: &UdpBuilder) -> io::Result<&UdpBuilder> {
-    // reuse_port implied by reuse_address on Windows according to https://stackoverflow.com/a/14388707
+    // reuse_port implied by reuse_address on Windows
+    // according to https://stackoverflow.com/a/14388707
     builder.reuse_address(true)
 }

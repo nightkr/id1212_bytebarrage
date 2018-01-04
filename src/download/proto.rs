@@ -18,7 +18,10 @@ pub enum ServerMsg {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum ClientMsg {
     QueryResult(bool),
-    Contents(#[serde(with = "serde_bytes")] Bytes),
+    Contents(
+        #[serde(with = "serde_bytes")]
+        Bytes
+    ),
 }
 
 type ServerCodec = RmpCodec<ServerMsg, ClientMsg>;

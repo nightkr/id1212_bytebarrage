@@ -85,9 +85,9 @@ impl Manifest {
         }
 
         Ok(Manifest {
-            name: path.file_name()
-                .and_then(|x| x.to_str())
-                .map(|x| x.to_string()),
+            name: path.file_name().and_then(|x| x.to_str()).map(
+                |x| x.to_string(),
+            ),
             pieces: pieces,
         })
     }

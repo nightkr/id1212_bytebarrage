@@ -25,8 +25,9 @@ impl<In, Out: Serialize> Encoder for RmpCodec<In, Out> {
     type Error = io::Error;
 
     fn encode(&mut self, item: Out, buf: &mut BytesMut) -> io::Result<()> {
-        let vec = rmp_serde::to_vec(&item)
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let vec = rmp_serde::to_vec(&item).map_err(|err| {
+            io::Error::new(io::ErrorKind::InvalidData, err)
+        })?;
         buf.extend(vec);
         Ok(())
     }
@@ -42,8 +43,8 @@ impl<In: for<'de> Deserialize<'de>, Out> Decoder for RmpCodec<In, Out> {
             let msg: In = match rmp_serde::from_read(&mut cursor) {
                 Ok(x) => x,
                 // Not enough data, read more and try again
-                Err(rmp_serde::decode::Error::InvalidDataRead(_err))
-                | Err(rmp_serde::decode::Error::InvalidMarkerRead(_err)) => return Ok(None),
+                Err(rmp_serde::decode::Error::InvalidDataRead(_err)) |
+                Err(rmp_serde::decode::Error::InvalidMarkerRead(_err)) => return Ok(None),
                 Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidInput, err)),
             };
             (msg, cursor.position())

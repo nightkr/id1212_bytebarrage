@@ -25,7 +25,9 @@ impl Service for DownloadServer {
     fn call(&self, req: Self::Request) -> Self::Future {
         match req {
             ServerMsg::Get(piece_ref) => Box::new(future::result(
-                read_piece(&self.directory, &piece_ref).map(ClientMsg::Contents),
+                read_piece(&self.directory, &piece_ref).map(
+                    ClientMsg::Contents,
+                ),
             )),
             ServerMsg::Query(piece_ref) => Box::new(future::ok(ClientMsg::QueryResult(
                 self.directory.find_piece(&piece_ref).is_some(),
@@ -37,7 +39,10 @@ impl Service for DownloadServer {
 fn read_piece(directory: &Directory, piece_ref: &PieceRef) -> io::Result<Bytes> {
     let dir_piece_ref = directory.find_piece(&piece_ref).ok_or(io::Error::new(
         io::ErrorKind::NotFound,
-        format!("unknown piece {:?}", piece_ref),
+        format!(
+            "unknown piece {:?}",
+            piece_ref
+        ),
     ))?;
     let mut file = File::open(dir_piece_ref.file)?;
     file.seek(SeekFrom::Start(dir_piece_ref.from))?;
@@ -59,11 +64,7 @@ pub fn listen<Addr: ToSocketAddrs>(addrs: Addr, directory: &Directory) -> io::Re
     server.with_handle(move |handle| {
         let dir = dir.clone();
         discovery::server::listen(handle, addr.port(), dir.clone()).unwrap();
-        move || {
-            Ok(DownloadServer {
-                directory: dir.clone(),
-            })
-        }
+        move || Ok(DownloadServer { directory: dir.clone() })
     });
     Ok(())
 }

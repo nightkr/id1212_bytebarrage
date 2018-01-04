@@ -48,9 +48,9 @@ fn download_pieces<'f>(
             Box::new(
                 future::select_ok(piece_peers)
                     .and_then(move |((client, addr), _)| {
-                        client
-                            .call(ServerMsg::Get(piece.piece))
-                            .map(move |msg| (msg, addr))
+                        client.call(ServerMsg::Get(piece.piece)).map(move |msg| {
+                            (msg, addr)
+                        })
                     })
                     .and_then(move |(msg, addr)| match msg {
                         ClientMsg::Contents(buf) => {
@@ -61,7 +61,8 @@ fn download_pieces<'f>(
                             } else {
                                 println!(
                                     "Received damaged piece {:?} from {}, blacklisting...",
-                                    piece.piece, addr
+                                    piece.piece,
+                                    addr
                                 );
                                 discovery_mgr.remove_piece_peer(&piece.piece, &addr);
                                 Err(io::Error::new(
@@ -77,11 +78,9 @@ fn download_pieces<'f>(
                     }),
             )
         } else {
-            Box::new(
-                timer
-                    .sleep(Duration::from_millis(500))
-                    .then(|_| Err(io::Error::new(io::ErrorKind::NotFound, "no peer has piece"))),
-            )
+            Box::new(timer.sleep(Duration::from_millis(500)).then(|_| {
+                Err(io::Error::new(io::ErrorKind::NotFound, "no peer has piece"))
+            }))
         };
 
         Box::new(download.then(move |result| match result {
